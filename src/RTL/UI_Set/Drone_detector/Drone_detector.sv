@@ -17,9 +17,7 @@ module drone_detector #(
     output logic [$clog2(WIDTH)-1:0] target_width,
     output logic [$clog2(HEIGHT)-1:0] target_height,
     output logic target_type,  // 0: enemy, 1: friend
-    output logic target_valid,
-
-    output logic frame_done
+    output logic target_valid
 );
 
     logic                                   pixel_ally;
@@ -29,8 +27,6 @@ module drone_detector #(
     logic [$clog2(DIVIDE_X * DIVIDE_Y)-1:0] pxc_area_addr;
     logic                                   pxc_valid;
     logic                                   pxc_frame_done;
-
-    assign frame_done = pxc_frame_done;
 
     Drone_Classification_Color U_DCC (
         .we          (we),

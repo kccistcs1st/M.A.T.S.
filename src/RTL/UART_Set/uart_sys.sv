@@ -40,6 +40,7 @@ module UART_Set #(
     ) U_DS (
         .clk      (clk),
         .reset    (rst),
+        .i_start  (~w_fifo_empty),
         .i_updata (w_tx_done),
         .i_data   (fifo_pop_data),
         .o_data   (w_tx_data),
@@ -86,6 +87,7 @@ module data_spliter #(
     input  logic                      clk,
     input  logic                      reset,
 
+    input  logic                      i_start,
     input  logic                      i_updata,
 
     input  logic [IN_DATA_WIDTH-1:0]  i_data,
@@ -98,31 +100,42 @@ module data_spliter #(
     localparam int BITWIDTH_SEQ_CYCLE = $clog2(SEQ_CYCLE);
 
     reg [BITWIDTH_SEQ_CYCLE-1:0] seq_reg, seq_next;
+    reg                          active, active_next;
 
     always_ff @(posedge clk or posedge reset) begin
         if (reset) begin
             seq_reg <= 0;
+            active  <= 1'b0;
         end
         else begin
             seq_reg <= seq_next;
+            active  <= active_next;
         end
     end
 
     always_comb begin
         o_data = i_data[(OUT_DATA_WIDTH*seq_reg) +: OUT_DATA_WIDTH];
-        if (i_updata) begin
+        if (i_start & ~active) begin
+            seq_next    = 0;
+            active_next = 1'b1;
+            o_done      = 1'b0;
+        end
+        else if (i_updata & active) begin
             if (seq_reg == MAX_SEQ_CYCLE) begin
-               seq_next = 0;
-               o_done   = 1'b1;
+               seq_next    = 0;
+               active_next = 1'b0; 
+               o_done      = 1'b1;
             end
             else begin
-               seq_next = seq_reg+1;
-               o_done   = 1'b0;
+               seq_next    = seq_reg+1;
+               active_next = active;
+               o_done      = 1'b0;
             end
         end
         else begin
-            seq_next = seq_reg;
-            o_done   = 1'b0;
+            seq_next    = seq_reg;
+            active_next = active;
+            o_done      = 1'b0;
         end
     end
 
