@@ -1,50 +1,59 @@
 `timescale 1ns / 1ps
 
 module instruction_generator (
-    input  logic clk,
-    input  logic reset,
+    input logic clk,
+    input logic reset,
 
     // from box_coord_calc
-    input  logic       box_valid,
-    output logic       box_ready,
+    input  logic box_valid,
+    output logic box_ready,
 
-    input  logic [8:0] box_x0,     // left
-    input  logic [7:0] box_y0,     // top
-    input  logic [8:0] box_x1,     // right
-    input  logic [7:0] box_y1,     // bottom
-    input  logic       box_type,   // 0: enemy, 1: friend
+    input logic [8:0] box_x0,   // left
+    input logic [7:0] box_y0,   // top
+    input logic [8:0] box_x1,   // right
+    input logic [7:0] box_y1,   // bottom
+    input logic       box_type, // 0: enemy, 1: friend
 
     // to instruction FIFO
-    output logic       instr_valid,
-    input  logic       instr_ready,
+    output logic instr_valid,
+    input  logic instr_ready,
 
-    output logic [1:0] instr_op, //  operation: 가로, 세로, 글자
+    output logic [1:0] instr_op,        // operation: 가로, 세로, 글자
     output logic [8:0] instr_x_start,
     output logic [7:0] instr_y_start,
     output logic [8:0] instr_length,
     output logic [3:0] instr_dash_on,
     output logic [3:0] instr_dash_off,
-    output logic       instr_type    // 0: enemy, 1: friend
+    output logic       instr_type       // 0: enemy, 1: friend
 );
 
     // Instruction op code
-    localparam logic [1:0] OP_HLINE        = 2'd0;
-    localparam logic [1:0] OP_VLINE        = 2'd1;
-    localparam logic [1:0] OP_TEXT_ENEMY   = 2'd2;
+    localparam logic [1:0] OP_HLINE = 2'd0;
+    localparam logic [1:0] OP_VLINE = 2'd1;
+    localparam logic [1:0] OP_TEXT_ENEMY = 2'd2;
     localparam logic [1:0] OP_TEXT_WARNING = 2'd3;
 
     // Dash pattern
-    localparam logic [3:0] DASH_ON  = 4'd8;
+    localparam logic [3:0] DASH_ON = 4'd8;
     localparam logic [3:0] DASH_OFF = 4'd8;
+
+    // Border thickness: 3 pixels
+    // line_layer = 0, 1, 2 순서로 같은 테두리 명령을 3번 생성
+    localparam logic [1:0] LAST_LINE_LAYER = 2'd2;
+
+    // UI framebuffer size: 320 x 240
+    // 바깥쪽 확장 시 화면 범위를 넘지 않도록 saturation 처리
+    localparam logic [8:0] MAX_X = 9'd319;
+    localparam logic [7:0] MAX_Y = 8'd239;
 
     // Text position
     // 5x7 font + 1 pixel spacing
     // 한 글자 폭 = 6 pixel
-    localparam logic [7:0] TEXT_UP_OFFSET   = 8'd12;
+    localparam logic [7:0] TEXT_UP_OFFSET = 8'd12;
     localparam logic [7:0] TEXT_DOWN_OFFSET = 8'd4;
 
-    localparam int CHAR_PITCH         = 6;
-    localparam int ENEMY_CHAR_COUNT   = 5;
+    localparam int CHAR_PITCH = 6;
+    localparam int ENEMY_CHAR_COUNT = 5;
     localparam int WARNING_CHAR_COUNT = 7;
 
     localparam int ENEMY_TEXT_WIDTH =
@@ -53,11 +62,9 @@ module instruction_generator (
     localparam int WARNING_TEXT_WIDTH =
         WARNING_CHAR_COUNT * CHAR_PITCH;     // 42 pixel
 
-    localparam int ENEMY_HALF_WIDTH =
-        ENEMY_TEXT_WIDTH / 2;                // 15 pixel
+    localparam int ENEMY_HALF_WIDTH = ENEMY_TEXT_WIDTH / 2;  // 15 pixel
 
-    localparam int WARNING_HALF_WIDTH =
-        WARNING_TEXT_WIDTH / 2;              // 21 pixel
+    localparam int WARNING_HALF_WIDTH = WARNING_TEXT_WIDTH / 2;  // 21 pixel
 
 
     // FSM state
@@ -71,26 +78,27 @@ module instruction_generator (
         S_TEXT_WARNING
     } state_t;
 
-    state_t state;
+    state_t       state;
 
 
     // Saved box information
-    logic [8:0] x0_reg;
-    logic [7:0] y0_reg;
-    logic [8:0] x1_reg;
-    logic [7:0] y1_reg;
-    logic       type_reg;
+    logic   [8:0] x0_reg;
+    logic   [7:0] y0_reg;
+    logic   [8:0] x1_reg;
+    logic   [7:0] y1_reg;
+    logic         type_reg;
 
-    logic [8:0] box_width;
-    logic [8:0] box_height;
-    logic [9:0] box_center_sum;
-    logic [8:0] box_center_x;
+    // 현재 테두리의 몇 번째 줄을 생성하는지 표시
+    // 0: 첫 번째 줄, 1: 두 번째 줄, 2: 세 번째 줄
+    logic   [1:0] line_layer;
+
+    logic   [8:0] box_width;
+    logic   [8:0] box_height;
+    logic   [9:0] box_center_sum;
+    logic   [8:0] box_center_x;
 
     // width = x1 - x0 + 1
-    assign box_width =
-        (x1_reg >= x0_reg)
-        ? (x1_reg - x0_reg + 9'd1)
-        : 9'd1;
+    assign box_width = (x1_reg >= x0_reg) ? (x1_reg - x0_reg + 9'd1) : 9'd1;
 
     // height = y1 - y0 + 1
     assign box_height =
@@ -99,11 +107,9 @@ module instruction_generator (
         : 9'd1;
 
     // x0 + x1은 최대 638이므로 10bit로 계산
-    assign box_center_sum =
-        {1'b0, x0_reg} + {1'b0, x1_reg};
+    assign box_center_sum = {1'b0, x0_reg} + {1'b0, x1_reg};
 
-    assign box_center_x =
-        box_center_sum[9:1];
+    assign box_center_x = box_center_sum[9:1];
 
     // IDLE일 때만 새로운 box 입력 가능
     assign box_ready = (state == S_IDLE);
@@ -115,42 +121,58 @@ module instruction_generator (
     // Output instruction logic
     always_comb begin
         // default
-        instr_op        = OP_HLINE;
-        instr_x_start   = 9'd0;
-        instr_y_start   = 8'd0;
-        instr_length    = 9'd1;
-        instr_dash_on   = DASH_ON;
-        instr_dash_off  = DASH_OFF;
-        instr_type      = type_reg;
+        instr_op       = OP_HLINE;
+        instr_x_start  = 9'd0;
+        instr_y_start  = 8'd0;
+        instr_length   = 9'd1;
+        instr_dash_on  = DASH_ON;
+        instr_dash_off = DASH_OFF;
+        instr_type     = type_reg;
 
         case (state)
 
-            // 위쪽 점선 테두리
+            // 위쪽 점선 테두리: y0, y0-1, y0-2
             S_TOP: begin
                 instr_op       = OP_HLINE;
                 instr_x_start  = x0_reg;
-                instr_y_start  = y0_reg;
+
+                // y가 0보다 작아지는 underflow 방지
+                if (y0_reg >= {{6{1'b0}}, line_layer})
+                    instr_y_start = y0_reg - {{6{1'b0}}, line_layer};
+                else
+                    instr_y_start = 8'd0;
                 instr_length   = box_width;
                 instr_dash_on  = DASH_ON;
                 instr_dash_off = DASH_OFF;
                 instr_type     = type_reg;
             end
 
-            // 아래쪽 점선 테두리
+            // 아래쪽 점선 테두리: y1, y1+1, y1+2
             S_BOTTOM: begin
                 instr_op       = OP_HLINE;
                 instr_x_start  = x0_reg;
-                instr_y_start  = y1_reg;
+
+                // y가 화면 아래쪽 범위를 넘지 않도록 제한
+                if (({1'b0, y1_reg} + {7'd0, line_layer}) <= {1'b0, MAX_Y})
+                    instr_y_start = y1_reg + {{6{1'b0}}, line_layer};
+                else
+                    instr_y_start = MAX_Y;
                 instr_length   = box_width;
                 instr_dash_on  = DASH_ON;
                 instr_dash_off = DASH_OFF;
                 instr_type     = type_reg;
             end
 
-            // 왼쪽 점선 테두리
+            // 왼쪽 점선 테두리: x0, x0-1, x0-2
             S_LEFT: begin
                 instr_op       = OP_VLINE;
-                instr_x_start  = x0_reg;
+
+                // x가 0보다 작아지는 underflow 방지
+                if (x0_reg >= {{7{1'b0}}, line_layer})
+                    instr_x_start = x0_reg - {{7{1'b0}}, line_layer};
+                else
+                    instr_x_start = 9'd0;
+
                 instr_y_start  = y0_reg;
                 instr_length   = box_height;
                 instr_dash_on  = DASH_ON;
@@ -158,10 +180,16 @@ module instruction_generator (
                 instr_type     = type_reg;
             end
 
-            // 오른쪽 점선 테두리
+            // 오른쪽 점선 테두리: x1, x1+1, x1+2
             S_RIGHT: begin
                 instr_op       = OP_VLINE;
-                instr_x_start  = x1_reg;
+
+                // x가 화면 오른쪽 범위를 넘지 않도록 제한
+                if (({1'b0, x1_reg} + {8'd0, line_layer}) <= {1'b0, MAX_X})
+                    instr_x_start = x1_reg + {{7{1'b0}}, line_layer};
+                else
+                    instr_x_start = MAX_X;
+
                 instr_y_start  = y0_reg;
                 instr_length   = box_height;
                 instr_dash_on  = DASH_ON;
@@ -175,23 +203,19 @@ module instruction_generator (
 
                 // 박스 중심 기준 ENEMY 가운데 정렬
                 if (box_center_x >= ENEMY_HALF_WIDTH)
-                    instr_x_start =
-                        box_center_x - ENEMY_HALF_WIDTH;
-                else
-                    instr_x_start = 9'd0;
+                    instr_x_start = box_center_x - ENEMY_HALF_WIDTH;
+                else instr_x_start = 9'd0;
 
                 // 박스 위에 공간이 있으면 위쪽에 표시
                 if (y0_reg > TEXT_UP_OFFSET)
-                    instr_y_start =
-                        y0_reg - TEXT_UP_OFFSET;
-                else
-                    instr_y_start = y0_reg;
+                    instr_y_start = y0_reg - TEXT_UP_OFFSET;
+                else instr_y_start = y0_reg;
 
                 // ENEMY = 5글자
                 instr_length = 9'd5;
 
                 // text에서는 dash 정보 사용 안 함
-                instr_dash_on  = 4'd0;
+                instr_dash_on = 4'd0;
                 instr_dash_off = 4'd0;
 
                 // enemy text는 빨간색
@@ -204,23 +228,18 @@ module instruction_generator (
 
                 // 박스 중심 기준 WARNING 가운데 정렬
                 if (box_center_x >= WARNING_HALF_WIDTH)
-                    instr_x_start =
-                        box_center_x - WARNING_HALF_WIDTH;
-                else
-                    instr_x_start = 9'd0;
+                    instr_x_start = box_center_x - WARNING_HALF_WIDTH;
+                else instr_x_start = 9'd0;
 
                 // 박스 아래에 공간이 있으면 아래쪽에 표시
-                if (y1_reg < 8'd230)
-                    instr_y_start =
-                        y1_reg + TEXT_DOWN_OFFSET;
-                else
-                    instr_y_start = y1_reg;
+                if (y1_reg < 8'd230) instr_y_start = y1_reg + TEXT_DOWN_OFFSET;
+                else instr_y_start = y1_reg;
 
                 // WARNING = 7글자
                 instr_length = 9'd7;
 
                 // text에서는 dash 정보 사용 안 함
-                instr_dash_on  = 4'd0;
+                instr_dash_on = 4'd0;
                 instr_dash_off = 4'd0;
 
                 // warning text는 빨간색
@@ -243,61 +262,90 @@ module instruction_generator (
     // FSM sequential logic
     always_ff @(posedge clk or posedge reset) begin
         if (reset) begin
-            state    <= S_IDLE;
-            x0_reg   <= 9'd0;
-            y0_reg   <= 8'd0;
-            x1_reg   <= 9'd0;
-            y1_reg   <= 8'd0;
-            type_reg <= 1'b0;
+            state      <= S_IDLE;
+            x0_reg     <= 9'd0;
+            y0_reg     <= 8'd0;
+            x1_reg     <= 9'd0;
+            y1_reg     <= 8'd0;
+            type_reg   <= 1'b0;
+            line_layer <= 2'd0;
         end else begin
             case (state)
                 S_IDLE: begin
+                    // 새 박스의 첫 번째 선은 항상 layer 0부터 시작
+                    line_layer <= 2'd0;
+
                     if (box_valid && box_ready) begin
                         x0_reg   <= box_x0;
                         y0_reg   <= box_y0;
                         x1_reg   <= box_x1;
                         y1_reg   <= box_y1;
                         type_reg <= box_type;
-                        state <= S_TOP;
+                        state    <= S_TOP;
                     end
                 end
 
+                // 같은 TOP 상태에서 y0, y0-1, y0-2를 순서대로 출력
                 S_TOP: begin
-                    if (instr_valid && instr_ready)
-                        state <= S_BOTTOM;
+                    if (instr_valid && instr_ready) begin
+                        if (line_layer == LAST_LINE_LAYER) begin
+                            line_layer <= 2'd0;
+                            state      <= S_BOTTOM;
+                        end else begin
+                            line_layer <= line_layer + 2'd1;
+                        end
+                    end
                 end
 
+                // 같은 BOTTOM 상태에서 y1, y1+1, y1+2를 순서대로 출력
                 S_BOTTOM: begin
-                    if (instr_valid && instr_ready)
-                        state <= S_LEFT;
+                    if (instr_valid && instr_ready) begin
+                        if (line_layer == LAST_LINE_LAYER) begin
+                            line_layer <= 2'd0;
+                            state      <= S_LEFT;
+                        end else begin
+                            line_layer <= line_layer + 2'd1;
+                        end
+                    end
                 end
 
+                // 같은 LEFT 상태에서 x0, x0-1, x0-2를 순서대로 출력
                 S_LEFT: begin
-                    if (instr_valid && instr_ready)
-                        state <= S_RIGHT;
+                    if (instr_valid && instr_ready) begin
+                        if (line_layer == LAST_LINE_LAYER) begin
+                            line_layer <= 2'd0;
+                            state      <= S_RIGHT;
+                        end else begin
+                            line_layer <= line_layer + 2'd1;
+                        end
+                    end
                 end
 
+                // 같은 RIGHT 상태에서 x1, x1+1, x1+2를 순서대로 출력
                 S_RIGHT: begin
                     if (instr_valid && instr_ready) begin
-                        if (type_reg == 1'b0)
-                            state <= S_TEXT_ENEMY;
-                        else
-                            state <= S_IDLE;
+                        if (line_layer == LAST_LINE_LAYER) begin
+                            line_layer <= 2'd0;
+
+                            if (type_reg == 1'b0) state <= S_TEXT_ENEMY;
+                            else state <= S_IDLE;
+                        end else begin
+                            line_layer <= line_layer + 2'd1;
+                        end
                     end
                 end
 
                 S_TEXT_ENEMY: begin
-                    if (instr_valid && instr_ready)
-                        state <= S_TEXT_WARNING;
+                    if (instr_valid && instr_ready) state <= S_TEXT_WARNING;
                 end
 
                 S_TEXT_WARNING: begin
-                    if (instr_valid && instr_ready)
-                        state <= S_IDLE;
+                    if (instr_valid && instr_ready) state <= S_IDLE;
                 end
 
                 default: begin
-                    state <= S_IDLE;
+                    state      <= S_IDLE;
+                    line_layer <= 2'd0;
                 end
             endcase
         end
