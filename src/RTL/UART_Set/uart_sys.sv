@@ -2,7 +2,8 @@
 
 module UART_Set #(
     parameter int WIDTH = 320,
-    parameter int HEIGHT = 240
+    parameter int HEIGHT = 240,
+    parameter int WAIT_FRAME = 20
 ) (
     input  logic clk,
     input  logic rst,
@@ -33,6 +34,30 @@ module UART_Set #(
     assign in_data = { 8'hFF, target_height, target_width, center_y, center_x, target_type, frame_end, 4'b1111 };
 
     wire data_spliter_done;
+    
+    // 20 frame counter
+    localparam int BITWIDTH_WAIT_FRAME = $clog2(WAIT_FRAME);
+    reg [BITWIDTH_WAIT_FRAME-1:0] frame_counter;
+    reg                           insert_active;
+
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            frame_counter <= 0;
+            insert_active <= 1'b0;
+        end
+        else begin
+            if (frame_end) begin
+                if (frame_counter == (WAIT_FRAME-1)) begin
+                    frame_counter <= 0;
+                    insert_active <= 1'b1;
+                end
+                else begin
+                    frame_counter <= frame_counter+1;
+                    insert_active <= 1'b0;
+                end
+            end
+        end
+    end
 
     data_spliter #(
         .IN_DATA_WIDTH  (BITWIDTH_DATA),
@@ -47,13 +72,30 @@ module UART_Set #(
         .o_done   (data_spliter_done)
     );
 
+    // frame_end의 rising edge만 추출 (만약을 대비해)
+    reg frame_end_d;
+    always @(posedge clk or posedge rst) begin
+        if (rst) frame_end_d <= 1'b0;
+        else     frame_end_d <= frame_end;
+    end
+
+    reg target_valid_d;
+    always @(posedge clk or posedge rst) begin
+        if (rst) target_valid_d <= 1'b0;
+        else     target_valid_d <= target_valid;
+    end
+    
+    wire valid_pulse = target_valid & ~target_valid_d;
+
+    // FIFO 연결 부분 수정 (push 조건 변경)
     fifo #(
         .DEPTH     (32),
         .BIT_WIDTH (BITWIDTH_DATA)
     ) U_INFO_FIFO (
         .clk       (clk),
         .rst       (rst),
-        .push      (target_valid | frame_end),
+        // 변경된 push: valid가 뜨는 순간 딱 1번 OR 프레임 끝날 때 딱 1번
+        .push      ( insert_active & (valid_pulse | frame_end_d) ), 
         .pop       (data_spliter_done),
         .push_data (in_data),
         .pop_data  (fifo_pop_data),
@@ -64,7 +106,7 @@ module UART_Set #(
     uart_tx U_UART_TX (
         .clk(clk),
         .rst(rst),
-        .tx_start(~w_fifo_empty),
+        .tx_start( ~w_fifo_empty & ~w_tx_done & ~data_spliter_done ),
         .b_tick(w_b_tick_115200_16sam),
         .tx_data(w_tx_data),
         .uart_tx(uart_tx),
@@ -100,43 +142,64 @@ module data_spliter #(
     localparam int BITWIDTH_SEQ_CYCLE = $clog2(SEQ_CYCLE);
 
     reg [BITWIDTH_SEQ_CYCLE-1:0] seq_reg, seq_next;
-    reg                          active, active_next;
+    reg [1:0]                    state, state_next;
+
+    localparam int IDLE   = 2'd0;
+    localparam int ACTIVE = 2'd1;
+    localparam int FINAL  = 2'd2;
 
     always_ff @(posedge clk or posedge reset) begin
         if (reset) begin
             seq_reg <= 0;
-            active  <= 1'b0;
+            state   <= IDLE;
         end
         else begin
             seq_reg <= seq_next;
-            active  <= active_next;
+            state   <= state_next;
         end
     end
 
+    logic [BITWIDTH_SEQ_CYCLE-1:0] current_seq;
+
     always_comb begin
-        o_data = i_data[(OUT_DATA_WIDTH*seq_reg) +: OUT_DATA_WIDTH];
-        if (i_start & ~active) begin
-            seq_next    = 0;
-            active_next = 1'b1;
-            o_done      = 1'b0;
+        // i_updata가 들어오는 순간, 다음 cycle의 seq 값을 미리 계산하여 데이터 출력에 반영
+        if (state == ACTIVE && i_updata) begin
+            current_seq = (seq_reg == MAX_SEQ_CYCLE) ? 0 : seq_reg + 1;
+        end else begin
+            current_seq = seq_reg;
         end
-        else if (i_updata & active) begin
-            if (seq_reg == MAX_SEQ_CYCLE) begin
-               seq_next    = 0;
-               active_next = 1'b0; 
-               o_done      = 1'b1;
+
+        o_data = i_data[(OUT_DATA_WIDTH*current_seq) +: OUT_DATA_WIDTH];
+
+        case(state)
+            // ... (기존 case 문과 동일하게 유지) ...
+            IDLE  : begin
+                seq_next   = 0;
+                state_next = (i_start)? ACTIVE : IDLE;
+                o_done     = 1'b0;
             end
-            else begin
-               seq_next    = seq_reg+1;
-               active_next = active;
-               o_done      = 1'b0;
+            ACTIVE: begin
+                if (i_updata) begin
+                    seq_next   = (seq_reg == MAX_SEQ_CYCLE)? 0 : seq_reg+1;
+                    state_next = (seq_reg == MAX_SEQ_CYCLE)? FINAL : ACTIVE;
+                end
+                else begin
+                    seq_next   = seq_reg;
+                    state_next = ACTIVE;
+                end
+                o_done     = 1'b0;
             end
-        end
-        else begin
-            seq_next    = seq_reg;
-            active_next = active;
-            o_done      = 1'b0;
-        end
+            FINAL : begin
+                seq_next   = 0;
+                state_next = IDLE;
+                o_done     = 1'b1;
+            end
+            default: begin
+                seq_next   = 0;
+                state_next = IDLE;
+                o_done     = 1'b0;
+            end
+        endcase
     end
 
 endmodule
