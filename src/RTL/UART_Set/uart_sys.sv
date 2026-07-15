@@ -3,9 +3,9 @@
 module UART_Set #(
     parameter int WIDTH      = 320,
     parameter int HEIGHT     = 240,
-    parameter int WAIT_FRAME = 20,
+    parameter int WAIT_FRAME = 10,
     parameter int CLK_FREQ   = 100_000_000, // 메인 시스템 클럭: 100MHz
-    parameter int BAUDRATE   = 9600         // UART 통신 속도
+    parameter int BAUDRATE   = 115200         // UART 통신 속도
 ) (
     input  logic clk,     // 100MHz Main System Clock
     input  logic rst,     // Asynchronous Active-High Reset
@@ -122,7 +122,7 @@ module UART_Set #(
     //---------------------------------------------------------------------
     // 4. Internal Data Path & Sub-sampling Control (100MHz Domain)
     //---------------------------------------------------------------------
-    wire w_b_tick_9600_16sam;
+    wire w_b_tick_16sam;
     wire w_tx_done, w_tx_busy;
     wire w_fifo_empty, w_fifo_full;
     wire [7:0] w_tx_data;
@@ -201,7 +201,7 @@ module UART_Set #(
         .clk(clk),
         .rst(rst),
         .tx_start( ~w_fifo_empty & ~w_tx_done & ~data_spliter_done ),
-        .b_tick(w_b_tick_9600_16sam),
+        .b_tick(w_b_tick_16sam),
         .tx_data(w_tx_data),
         .uart_tx(uart_tx),
         .tx_busy(w_tx_busy),
@@ -216,7 +216,7 @@ module UART_Set #(
     ) U_BAUD_TICK (
         .clk(clk),
         .rst(rst),
-        .b_tick(w_b_tick_9600_16sam)
+        .b_tick(w_b_tick_16sam)
     );
 
 endmodule
