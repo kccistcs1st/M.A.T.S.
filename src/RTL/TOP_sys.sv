@@ -20,11 +20,16 @@ module TOP_sys (
 
     // SCCB
     output logic scl,
-    inout  tri   sda
+    inout  tri   sda,
+
+    // UART Tx
+    output logic uart_tx
 );
     localparam int IMG_W = 320;
     localparam int IMG_H = 240;
     localparam int ADDR_W = $clog2(IMG_W * IMG_H);
+    localparam int WIDTH_W = $clog2(IMG_W);
+    localparam int WIDTH_H = $clog2(IMG_H);
 
     // Clock signals
     logic        clk_100M;
@@ -53,6 +58,15 @@ module TOP_sys (
     logic        ui_en;
     logic        friend_detect;
     logic        enemy_detect;
+
+    // UART
+    logic               uart_valid;
+    logic               uart_type;
+    logic [WIDTH_W-1:0] uart_cx;
+    logic [WIDTH_H-1:0] uart_cy;
+    logic [WIDTH_W-1:0] uart_w;
+    logic [WIDTH_H-1:0] uart_h;
+    logic               frame_done;
 
     // =========================================================
     // Camera
@@ -137,7 +151,15 @@ module TOP_sys (
         .ui_en        (ui_en),
         .friend_detect(friend_detect),
         .enemy_detect (enemy_detect),
-        .bitmap_pixel (bitmap_pixel)
+        .bitmap_pixel (bitmap_pixel),
+
+        .uart_out_type  (uart_type),
+        .uart_out_valid (uart_valid),
+        .uart_out_cx    (uart_cx),
+        .uart_out_cy    (uart_cy),
+        .uart_out_w     (uart_w),
+        .uart_out_h     (uart_h),
+        .frame_done     (frame_done)
     );
 
     // =========================================================
@@ -189,6 +211,28 @@ module TOP_sys (
         .port_red  (port_red),
         .port_green(port_green),
         .port_blue (port_blue)
+    );
+
+    
+    // =========================================================
+    // Output Information to UART Tx
+    // =========================================================
+
+    UART_Set #(
+        .WIDTH  (IMG_W),
+        .HEIGHT (IMG_H)
+    ) U_UART_Set (
+        .clk           (clk),
+        .rst           (reset),
+        .clk_25m       (cam_pclk),
+        .uart_tx       (uart_tx),
+        .target_valid  (uart_valid),
+        .target_type   (uart_type), 
+        .center_x      (uart_cx),
+        .center_y      (uart_cy),
+        .target_width  (uart_w),
+        .target_height (uart_h),
+        .frame_end     (frame_done)
     );
 
 endmodule

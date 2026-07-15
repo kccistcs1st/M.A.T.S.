@@ -1,9 +1,11 @@
 `timescale 1ns / 1ps
 
 module UI_Set #(
-    parameter int IMG_W  = 320,
-    parameter int IMG_H  = 240,
-    parameter int ADDR_W = $clog2(IMG_W * IMG_H)
+    parameter int IMG_W   = 320,
+    parameter int WIDTH_W = $clog2(IMG_W),
+    parameter int IMG_H   = 240,
+    parameter int WIDTH_H = $clog2(IMG_H),
+    parameter int ADDR_W  = $clog2(IMG_W * IMG_H)
 ) (
     input logic reset,
 
@@ -22,7 +24,16 @@ module UI_Set #(
     output logic       ui_en,
     output logic       friend_detect,
     output logic       enemy_detect,
-    output logic [1:0] bitmap_pixel
+    output logic [1:0] bitmap_pixel,
+
+    // For UART_Set
+    output logic               uart_out_valid,
+    output logic               uart_out_type,
+    output logic [WIDTH_W-1:0] uart_out_cx,
+    output logic [WIDTH_H-1:0] uart_out_cy,
+    output logic [WIDTH_W-1:0] uart_out_w,
+    output logic [WIDTH_H-1:0] uart_out_h,
+    output logic               frame_done
 );
 
     // Detector output: 0 = enemy, 1 = friend
@@ -46,6 +57,15 @@ module UI_Set #(
     // A zero bitmap pixel is transparent in SCREEN_MUX.
     assign ui_en = 1'b1;
 
+    // UART Output
+    assign uart_out_valid = det_valid;
+    assign uart_out_type  = det_type;
+    assign uart_out_cx    = det_x;
+    assign uart_out_cy    = det_y;
+    assign uart_out_w     = det_w;
+    assign uart_out_h     = det_h;
+    // assign frame_done     = cam_we & ( cam_wAddr == ((IMG_W * IMG_H) - 1) );
+
     drone_detector #(
         .WIDTH   (IMG_W),
         .HEIGHT  (IMG_H),
@@ -63,7 +83,8 @@ module UI_Set #(
         .target_width (det_w),
         .target_height(det_h),
         .target_type  (det_type),
-        .target_valid (det_valid)
+        .target_valid (det_valid),
+        .frame_done   (frame_done)
     );
 
     // Hold detection status until the next camera frame begins.
