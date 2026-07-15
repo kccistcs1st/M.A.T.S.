@@ -64,7 +64,7 @@ module UI_Set #(
     assign uart_out_cy    = det_y;
     assign uart_out_w     = det_w;
     assign uart_out_h     = det_h;
-    assign frame_done     = cam_we & ( cam_wAddr == ((IMG_W * IMG_H) - 1) );
+    // assign frame_done     = cam_we & ( cam_wAddr == ((IMG_W * IMG_H) - 1) );
 
     drone_detector #(
         .WIDTH   (IMG_W),
@@ -83,7 +83,8 @@ module UI_Set #(
         .target_width (det_w),
         .target_height(det_h),
         .target_type  (det_type),
-        .target_valid (det_valid)
+        .target_valid (det_valid),
+        .frame_done   (frame_done)
     );
 
     // Hold detection status until the next camera frame begins.

@@ -17,7 +17,8 @@ module drone_detector #(
     output logic [$clog2(WIDTH)-1:0] target_width,
     output logic [$clog2(HEIGHT)-1:0] target_height,
     output logic target_type,  // 0: enemy, 1: friend
-    output logic target_valid
+    output logic target_valid,
+    output logic frame_done
 );
 
     logic                                   pixel_ally;
@@ -62,7 +63,8 @@ module drone_detector #(
         .target_width   (target_width),
         .target_height  (target_height),
         .target_type    (target_type),
-        .target_valid   (target_valid)
+        .target_valid   (target_valid),
+        .frame_done     (frame_done)
     );
 
 endmodule

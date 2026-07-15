@@ -222,11 +222,12 @@ module TOP_sys (
         .WIDTH  (IMG_W),
         .HEIGHT (IMG_H)
     ) U_UART_Set (
-        .clk           (clk_100M),
+        .clk           (clk),
         .rst           (reset),
+        .clk_25m       (cam_pclk),
         .uart_tx       (uart_tx),
-        .target_valid  (uart_type),
-        .target_type   (uart_valid), 
+        .target_valid  (uart_valid),
+        .target_type   (uart_type), 
         .center_x      (uart_cx),
         .center_y      (uart_cy),
         .target_width  (uart_w),
